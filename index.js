@@ -4,7 +4,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 
-const { obtenerRutaPeatonalSegura } = require('./src/safeli-score/ruteoService.js');
+const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,27 +15,47 @@ app.use(express.static(path.join(__dirname, 'src')));
 
 app.post('/api/calcular-camino-seguro', async (req, res) => {
   try {
-    const { origen, destino } = req.body; // El celular mandará { origen: [lng, lat], destino: [lng, lat] }
+    const { origen, destino } = req.body; 
 
     if (!origen || !destino) {
       return res.status(400).json({ 
-        error: 'Faltan las coordenadas de origen o destino.' 
+        error: 'Faltan las coordenadas de origen o destino.'
       });
     }
 
-    console.log(`📍 API Safeli: Calculando ruta segura desde ${origen} hasta ${destino}...`);
+    // ─── ADAPTADOR DE FORMATO SEGURO (Mapeamos a [lng, lat] numérico) ───
+    // Soporta tanto si el front te manda un objeto {lat, lng} como si manda un array
+    const origenFormateado = Array.isArray(origen) 
+      ? [parseFloat(origen[0]), parseFloat(origen[1])] 
+      : [parseFloat(origen.lng || origen.longitud), parseFloat(origen.lat || origen.latitud)];
 
-    // Ejecutamos tu lógica que esquiva los polígonos de Supabase
-    const rutaSegura = await obtenerRutaPeatonalSegura(origen, destino);
+    const destinoFormateado = Array.isArray(destino) 
+      ? [parseFloat(destino[0]), parseFloat(destino[1])] 
+      : [parseFloat(destino.lng || destino.longitud), parseFloat(destino.lat || destino.latitud)];
 
-    // Devolvemos el GeoJSON limpio al Front End de React Native
+    // Verificación estricta de control
+    if (isNaN(origenFormateado[0]) || isNaN(origenFormateado[1]) || isNaN(destinoFormateado[0]) || isNaN(destinoFormateado[1])) {
+      return res.status(400).json({ error: 'Las coordenadas tienen valores numéricos inválidos.' });
+    }
+
+    // Ahora el log va a imprimir los números reales en vez de [object Object]
+    console.log(`📍 API Safeli: Calculando ruta segura desde [${origenFormateado}] hasta [${destinoFormateado}]...`);
+
+    // Le pasamos los arrays limpios a tu ruteoService
+    const rutaSegura = await obtenerRutaPeatonalSegura(origenFormateado, destinoFormateado);
+
     return res.json(rutaSegura);
 
   } catch (error) {
     console.error('❌ Error en el endpoint de ruteo seguro:', error.message);
-    return res.status(500).json({ 
-      error: 'Error interno al calcular la ruta segura.' 
-    });
+    
+    // Si el error viene de OpenRouteService, lo desglosamos para debuggear mejor en consola
+    try {
+      const parsedError = JSON.parse(error.message);
+      return res.status(400).json(parsedError);
+    } catch {
+      return res.status(500).json({ error: 'Error interno en el servicio de mapas.', details: error.message });
+    }
   }
 });
 
