@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 require('dotenv').config();
 
+const cors = require('cors');
 const express = require('express');
 const path = require('path');
 
@@ -9,6 +10,7 @@ const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
 
