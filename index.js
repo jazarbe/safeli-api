@@ -27,14 +27,19 @@ app.post('/api/calcular-camino-seguro', async (req, res) => {
     }
 
     // ─── ADAPTADOR DE FORMATO SEGURO (Mapeamos a [lng, lat] numérico) ───
-    // Soporta tanto si el front te manda un objeto {lat, lng} como si manda un array
     const origenFormateado = Array.isArray(origen) 
       ? [parseFloat(origen[0]), parseFloat(origen[1])] 
-      : [parseFloat(origen.lng || origen.longitud), parseFloat(origen.lat || origen.latitud)];
+      : [
+          parseFloat(origen.lng || origen.longitud || origen.longitude), 
+          parseFloat(origen.lat || origen.latitud || origen.latitude)
+        ];
 
     const destinoFormateado = Array.isArray(destino) 
       ? [parseFloat(destino[0]), parseFloat(destino[1])] 
-      : [parseFloat(destino.lng || destino.longitud), parseFloat(destino.lat || destino.latitud)];
+      : [
+          parseFloat(destino.lng || destino.longitud || destino.longitude), 
+          parseFloat(destino.lat || destino.latitud || destino.latitude)
+        ];
 
     // Verificación estricta de control
     if (isNaN(origenFormateado[0]) || isNaN(origenFormateado[1]) || isNaN(destinoFormateado[0]) || isNaN(destinoFormateado[1])) {

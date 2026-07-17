@@ -42,6 +42,25 @@ class DBRepository {
 
     return { data, error };
   }
+
+  async saveRefreshToken(user_id, token, expiresAt) {
+    return await supabase.from('Tokens').insert([
+      { user_id, token, expires_at: expiresAt }
+    ]);
+  }
+
+  async validateToken(token) {
+    return await supabase
+      .from('Tokens')
+      .select('*, Usuarios(*)')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString()) // Validar expiración
+      .single();
+  }
+
+  async deleteToken(token) {
+    return await supabase.from('Tokens').delete().eq('token', token);
+  }
 }
 
 module.exports = DBRepository;

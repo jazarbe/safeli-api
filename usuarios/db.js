@@ -103,6 +103,10 @@ router.post('/auth/login', async (req, res) => {
         const accessToken = 'dev-access-token';
         const refreshToken = 'dev-refresh-token';
 
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 2); // Configurado para expirar en 2 horas
+        await dbRepo.saveRefreshToken(user.id, refreshToken, expiresAt.toISOString());
+
         return res.json({
             accessToken,
             refreshToken,
@@ -173,6 +177,10 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
         const accessToken = 'dev-access-token';
         const refreshToken = 'dev-refresh-token';
 
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 2); // Configurado para expirar en 2 horas
+        await dbRepo.saveRefreshToken(user.id, refreshToken, expiresAt.toISOString());
+
         return res.json({ accessToken, refreshToken, user });
     } catch (err) {
         console.error(err);
@@ -181,13 +189,24 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
 });
 
 router.get('/auth/perfil', async (req, res) => {
-    try {
-        const { data: users } = await dbRepo.getUserByLoginIdentifier(req.body.username || req.body.email || req.query.username || req.query.email);
-        return res.json({ users });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: 'Server error' });
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.split(' ')[1]; // Bearer <token>
+
+    if (!token) return res.status(401).json({ message: 'No autorizado' });
+
+    const { data: tokenData, error } = await dbRepo.validateToken(token);
+    if (error || !tokenData) return res.status(401).json({ message: 'Token inválido o expirado' });
+
+    // Si es válido, retornas la data del usuario asociada al token
+    return res.json({ user: tokenData.Usuarios });
+});
+
+router.post('/auth/logout', async (req, res) => {
+    const token = req.headers['x-refresh-token'];
+    if (token) {
+        await dbRepo.deleteToken(token);
     }
+    return res.status(200).json({ message: 'Sesión cerrada' });
 });
 
 module.exports = router;
