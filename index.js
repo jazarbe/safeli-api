@@ -5,15 +5,16 @@ const cors = require('cors');
 const express = require('express');
 const path = require('path');
 
+const usersRouter = require('./usuarios/db.js');
 const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
-
+app.use('', usersRouter);
 
 app.post('/api/calcular-camino-seguro', async (req, res) => {
   try {
@@ -63,4 +64,5 @@ app.post('/api/calcular-camino-seguro', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🗺️ Servicio de Mapa Seguro activado en: http://localhost:${PORT}/api/calcular-camino-seguro`);
+  console.log(`🔐 Servicio de Autenticación activado en: http://localhost:${PORT}/`);
 });

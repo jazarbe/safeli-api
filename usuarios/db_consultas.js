@@ -1,10 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import path from 'path';
+const { createClient } = require('@supabase/supabase-js');
+const dotenv = require('dotenv');
+const path = require('path');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 if (process.env.NODE_TLS_ALLOW_SELF_SIGNED === 'true' || process.env.NODE_ENV !== 'production') {
@@ -17,20 +14,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export default class DBRepository {
+class DBRepository {
   async getUsuarios() {
     const { data, error } = await supabase
       .from('Usuarios')
       .select('username, contraseña');
-
-    return { data, error };
-  }
-
-  async getUserByUsername(input) {
-    const { data, error } = await supabase
-      .from('Usuarios')
-      .select('username')
-      .eq('username', input);
 
     return { data, error };
   }
@@ -40,7 +28,7 @@ export default class DBRepository {
       .from('Usuarios')
       .select('*')
       .or(`username.eq.${identifier},email.eq.${identifier}`)
-      .maybeSingle();
+      .single();
 
     return { data, error };
   }
@@ -55,3 +43,5 @@ export default class DBRepository {
     return { data, error };
   }
 }
+
+module.exports = DBRepository;
