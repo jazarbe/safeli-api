@@ -5,29 +5,22 @@ const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
-const postgres = require('postgres'); //important
+const postgres = require('postgres');
 const DBRepository = require('./db_consultas.js');
+const jwt = require('jsonwebtoken');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+const SECRET_KEY = process.env.JWT_SECRET || 'ClaveSecretaSafeli2026$';
 
 const connectionString = process.env.DATABASE_URL
     .replace('[DATABASE_PASSWORD]', process.env.DATABASE_PASSWORD || '')
     .replace('[DB_PORT]', process.env.DB_PORT || '5432');
 
-const sql = postgres(connectionString); //important
 const dbRepo = new DBRepository();
-
 const router = express.Router();
 
-router.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
-    }
-    next();
-});
+// ─── MIDDLEWARES Y ARCHIVOS ESTÁTICOS ───
 router.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -36,45 +29,34 @@ router.use(cors({
 router.use(express.json());
 
 const uploadsDir = path.join(__dirname, 'uploads');
-try {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-} catch (e) {
-        console.warn('Could not create uploads directory', e);
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.resolve(__dirname, 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
+    destination: (req, file, cb) => cb(null, uploadsDir),
+    filename: (req, file, cb) => {
         const ext = path.extname(file.originalname) || '.jpg';
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+        cb(null, `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
     }
 });
+const upload = multer({ storage });
+router.use('/uploads', express.static(uploadsDir));
 
-const upload = multer({ storage: storage });
-router.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ─── HELPER PARA GENERAR TOKENS ───
+function generarTokens(user) {
+    const payload = { id: user.id, username: user.username, email: user.email };
+    
+    // Access token de corta duración (2 horas)
+    const accessToken = jwt.sign(payload, SECRET_KEY, { expiresIn: '2h' });
+    
+    // Refresh token de larga duración (7 días)
+    const refreshToken = jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: '7d' });
 
-router.get('/', (req, res) => {
-        res.type('html');
-        res.send(`<!DOCTYPE html>
-                                <html lang="en">
-                                <head>
-                                        <meta charset="utf-8">
-                                        <meta name="viewport" content="width=device-width,initial-scale=1">
-                                        <title>Auth mock server</title>
-                                </head>
-                                <body>
-                                        <h1>Auth mock server is running</h1>
-                                        <p>Available endpoints: <code>/auth/register</code>, <code>/auth/login</code>, <code>/uploads/</code></p>
-                                </body>
-                                </html>`);
-});
+    return { accessToken, refreshToken };
+}
 
+// ─── RUTAS ───
 router.post('/auth/login', async (req, res) => {
     try {
         const { username, contraseña, password } = req.body;
@@ -86,25 +68,21 @@ router.post('/auth/login', async (req, res) => {
 
         const { data: user, error } = await dbRepo.getUserByLoginIdentifier(username);
 
-        if (error) {
-            console.error('/auth/login db error', error);
-            return res.status(500).json({ message: 'DB error' });
-        }
-
-        if (!user) {
+        if (error || !user) {
             return res.status(401).json({ message: 'Usuario o contraseña incorrectos.' });
         }
 
-        const passwordMatches = rawPassword ? await bcrypt.compare(rawPassword, user.contraseña) : false;
+        const passwordMatches = await bcrypt.compare(rawPassword, user.contraseña);
         if (!passwordMatches) {
             return res.status(401).json({ message: 'Usuario o contraseña incorrectos.' });
         }
 
-        const accessToken = 'dev-access-token';
-        const refreshToken = 'dev-refresh-token';
+        // 1. Generamos JWTs reales
+        const { accessToken, refreshToken } = generarTokens(user);
 
+        // 2. Guardamos el Refresh Token en Supabase a 7 días
         const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 2); // Configurado para expirar en 2 horas
+        expiresAt.setDate(expiresAt.getDate() + 7);
         await dbRepo.saveRefreshToken(user.id, refreshToken, expiresAt.toISOString());
 
         return res.json({
@@ -131,18 +109,13 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
     try {
         const { nombre, apellido, email, username, fechaNacimiento, contraseña, password, nroTelefono } = req.body;
         const rawPassword = contraseña ?? password ?? '';
-        const parsedPhone = (() => {
-            const value = Number(nroTelefono);
-            return Number.isNaN(value) ? null : value;
-        })();
 
         let fotoUrl = '-1';
         if (req.file) {
             fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-        } else if (req.body.foto && typeof req.body.foto === 'string' && req.body.foto !== '[object Object]') {
-            fotoUrl = req.body.foto;
         }
-        const hashed = rawPassword ? await bcrypt.hash(rawPassword, 10) : '';
+
+        const hashed = await bcrypt.hash(rawPassword, 10);
 
         const { data: created, error: dbErr } = await dbRepo.createUser({
             nombre,
@@ -151,54 +124,51 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
             username,
             fechaNacimiento,
             contraseña: hashed,
-            nroTelefono: parsedPhone,
+            nroTelefono: Number(nroTelefono) || null,
             foto: fotoUrl,
         });
 
         if (dbErr) {
-            console.error('DB insert error', dbErr);
-            if (dbErr.code === '23505' || (dbErr.message && dbErr.message.toLowerCase().includes('duplicate'))) {
+            if (dbErr.code === '23505') {
                 return res.status(409).json({ message: 'El usuario o email ya está registrado.' });
             }
-            return res.status(500).json({ message: 'DB error' });
+            return res.status(500).json({ message: 'Error al crear usuario.' });
         }
 
-        const user = {
-            id: created.id,
-            nombre: created.nombre,
-            apellido: created.apellido,
-            email: created.email,
-            username: created.username,
-            nroTelefono: created.nroTelefono,
-            foto: created.foto,
-            fechaNacimiento: created.fechaNacimiento,
-        };
-
-        const accessToken = 'dev-access-token';
-        const refreshToken = 'dev-refresh-token';
+        // Generar JWT reales tras el registro
+        const { accessToken, refreshToken } = generarTokens(created);
 
         const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 2); // Configurado para expirar en 2 horas
-        await dbRepo.saveRefreshToken(user.id, refreshToken, expiresAt.toISOString());
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        await dbRepo.saveRefreshToken(created.id, refreshToken, expiresAt.toISOString());
 
-        return res.json({ accessToken, refreshToken, user });
+        return res.json({
+            accessToken,
+            refreshToken,
+            user: created
+        });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Server error' });
     }
 });
 
+// Validación directa del Access Token JWT sin ir a la DB
 router.get('/auth/perfil', async (req, res) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader?.split(' ')[1]; // Bearer <token>
+    const token = authHeader?.split(' ')[1]; 
 
     if (!token) return res.status(401).json({ message: 'No autorizado' });
 
-    const { data: tokenData, error } = await dbRepo.validateToken(token);
-    if (error || !tokenData) return res.status(401).json({ message: 'Token inválido o expirado' });
-
-    // Si es válido, retornas la data del usuario asociada al token
-    return res.json({ user: tokenData.Usuarios });
+    try {
+        // Desencripta y verifica la firma del JWT al instante
+        const decoded = jwt.verify(token, SECRET_KEY);
+        
+        const { data: user } = await dbRepo.getUserByLoginIdentifier(decoded.username);
+        return res.json({ user });
+    } catch (err) {
+        return res.status(401).json({ message: 'Token inválido o expirado' });
+    }
 });
 
 router.post('/auth/logout', async (req, res) => {
