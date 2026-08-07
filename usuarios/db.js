@@ -9,7 +9,6 @@ const postgres = require('postgres');
 const DBRepository = require('./db_consultas.js');
 const { verificarToken } = require('../middlewares/auth.js');
 const jwt = require('jsonwebtoken');
-const { verificarToken } = require('../middlewares/auth.js');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -25,7 +24,7 @@ const router = express.Router();
 // ─── MIDDLEWARES Y ARCHIVOS ESTÁTICOS ───
 router.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS', 'PUT'],
+    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 router.use(express.json());
@@ -214,15 +213,7 @@ router.put('/auth/perfil', verificarToken, async (req, res) => {
     }
 });
 
-router.post('/auth/logout', verificarToken, async (req, res) => {
-    const token = req.headers['x-refresh-token'];
-    if (token) {
-        await dbRepo.deleteToken(token);
-    }
-    return res.status(200).json({ message: 'Sesión cerrada' });
-});
-
-router.put('/auth/perfil', verificarToken, async (req, res) => {
+router.patch('/auth/perfil', verificarToken, async (req, res) => {
     try {
         const userId = req.user.id; 
         const { firstName, lastName, username, email, birthDate, nroTelefono } = req.body;
@@ -248,9 +239,17 @@ router.put('/auth/perfil', verificarToken, async (req, res) => {
         return res.json(updatedUser);
 
     } catch (err) {
-        console.error('Error en PUT /auth/perfil:', err);
+        console.error('Error en PATCH /auth/perfil:', err);
         return res.status(500).json({ message: 'Error en el servidor' });
     }
+});
+
+router.post('/auth/logout', verificarToken, async (req, res) => {
+    const token = req.headers['x-refresh-token'];
+    if (token) {
+        await dbRepo.deleteToken(token);
+    }
+    return res.status(200).json({ message: 'Sesión cerrada' });
 });
 
 module.exports = router;
