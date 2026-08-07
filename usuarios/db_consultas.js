@@ -61,6 +61,37 @@ class DBRepository {
   async deleteToken(token) {
     return await supabase.from('Tokens').delete().eq('token', token);
   }
+
+  async updateUser(userId, updatePayload) {
+    const dbData = {};
+
+    if (updatePayload.firstName !== undefined) dbData.nombre = updatePayload.firstName;
+    if (updatePayload.lastName !== undefined) dbData.apellido = updatePayload.lastName;
+    if (updatePayload.username !== undefined) dbData.username = updatePayload.username;
+    if (updatePayload.email !== undefined) dbData.email = updatePayload.email;
+    if (updatePayload.birthDate !== undefined) dbData.fechaNacimiento = updatePayload.birthDate;
+    if (updatePayload.nroTelefono !== undefined) dbData.nroTelefono = updatePayload.nroTelefono;
+
+    const { data, error } = await supabase
+      .from('Usuarios')
+      .update(dbData)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    return { data, error };
+  }
+
+  async updatePassword(userId, newPasswordHashed) {
+    const { data, error } = await supabase
+      .from('Usuarios')
+      .update({ contraseña: newPasswordHashed })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    return { data, error };
+  }
 }
 
 module.exports = DBRepository;

@@ -8,6 +8,7 @@ const fs = require('fs');
 const postgres = require('postgres');
 const DBRepository = require('./db_consultas.js');
 const jwt = require('jsonwebtoken');
+const { verificarToken } = require('../middlewares/auth.js');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -23,7 +24,7 @@ const router = express.Router();
 // ─── MIDDLEWARES Y ARCHIVOS ESTÁTICOS ───
 router.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'OPTIONS', 'PUT'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 router.use(express.json());
@@ -165,7 +166,7 @@ router.get('/auth/perfil', async (req, res) => {
         const decoded = jwt.verify(token, SECRET_KEY);
         
         const { data: user } = await dbRepo.getUserByLoginIdentifier(decoded.username);
-        return res.json({ user });
+        return res.json(user);
     } catch (err) {
         return res.status(401).json({ message: 'Token inválido o expirado' });
     }
@@ -177,6 +178,37 @@ router.post('/auth/logout', async (req, res) => {
         await dbRepo.deleteToken(token);
     }
     return res.status(200).json({ message: 'Sesión cerrada' });
+});
+
+router.put('/auth/perfil', verificarToken, async (req, res) => {
+    try {
+        const userId = req.user.id; 
+        const { firstName, lastName, username, email, birthDate, nroTelefono } = req.body;
+
+        const { data: updatedUser, error } = await dbRepo.updateUser(userId, {
+            firstName,
+            lastName,
+            username,
+            email,
+            birthDate,
+            nroTelefono
+        });
+
+        if (error) {
+            console.error('Error al actualizar usuario:', error);
+            if (error.code === '23505') {
+                return res.status(409).json({ message: 'El usuario o email ya está en uso.' });
+            }
+            return res.status(500).json({ message: 'Error interno al actualizar perfil.' });
+        }
+
+        // Formateamos la respuesta adaptando los nombres a lo que espera el Frontend
+        return res.json(updatedUser);
+
+    } catch (err) {
+        console.error('Error en PUT /auth/perfil:', err);
+        return res.status(500).json({ message: 'Error en el servidor' });
+    }
 });
 
 module.exports = router;

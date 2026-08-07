@@ -8,7 +8,7 @@ const path = require('path');
 const usersRouter = require('./usuarios/db.js');
 const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 // 1. Importar middleware de verificación
-const { verificarToken } = require('./authMiddleware.js');
+const { verificarToken } = require('./middlewares/auth.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
