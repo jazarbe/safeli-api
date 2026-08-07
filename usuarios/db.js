@@ -9,7 +9,6 @@ const postgres = require('postgres');
 const DBRepository = require('./db_consultas.js');
 const { verificarToken } = require('../middlewares/auth.js');
 const jwt = require('jsonwebtoken');
-const { verificarToken } = require('../middlewares/auth.js');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
