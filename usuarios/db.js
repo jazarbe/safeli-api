@@ -171,6 +171,54 @@ router.get('/auth/perfil', async (req, res) => {
     }
 });
 
+router.put('/auth/perfil', async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, SECRET_KEY);
+        const {
+            nombre,
+            apellido,
+            email,
+            nroTelefono,
+            username,
+            foto,
+            fechaNacimiento,
+            contraseña,
+        } = req.body;
+
+        const updatePayload = { id: decoded.id };
+
+        if (nombre !== undefined) updatePayload.nombre = nombre;
+        if (apellido !== undefined) updatePayload.apellido = apellido;
+        if (email !== undefined) updatePayload.email = email;
+        if (username !== undefined) updatePayload.username = username;
+        if (fechaNacimiento !== undefined) updatePayload.fechaNacimiento = fechaNacimiento;
+        if (foto !== undefined) updatePayload.foto = foto;
+        if (nroTelefono !== undefined) updatePayload.nroTelefono = Number(nroTelefono) || null;
+            
+        const rawPassword = contraseña;
+        if (rawPassword) {
+            updatePayload.contraseña = await bcrypt.hash(rawPassword, 10);
+        }
+
+        const { data: updatedUser, error } = await dbRepo.updateUser(updatePayload);
+        if (error) {
+            return res.status(500).json({ message: 'Error al actualizar usuario.' });
+        }
+
+        return res.json({ user: updatedUser });
+    } catch (err) {
+        console.error('/auth/perfil [PUT] error', err);
+        return res.status(401).json({ message: 'Token inválido o expirado' });
+    }
+});
+
 router.post('/auth/logout', async (req, res) => {
     const token = req.headers['x-refresh-token'];
     if (token) {

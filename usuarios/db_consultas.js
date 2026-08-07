@@ -43,6 +43,18 @@ class DBRepository {
     return { data, error };
   }
 
+  async updateUser(userPayload) {
+    const { id, ...updates } = userPayload;
+    const { data, error } = await supabase
+      .from('Usuarios')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    return { data, error };
+  }
+
   async saveRefreshToken(user_id, token, expiresAt) {
     return await supabase.from('Tokens').insert([
       { user_id, token, expires_at: expiresAt }
