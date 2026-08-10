@@ -7,8 +7,8 @@ const path = require('path');
 
 const usersRouter = require('./usuarios/db.js');
 const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
-// 1. Importar middleware de verificación
 const { verificarToken } = require('./middlewares/auth.js');
+const { formatDuration, formatDistance } = require('./helpers/utils.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,7 +18,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
 app.use('', usersRouter);
 
-// 2. Insertar `verificarToken` antes del callback del endpoint
 app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
   try {
     const { origen, destino } = req.body; 
@@ -67,16 +66,55 @@ app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
 
 app.get('/api/directions', async (req, res) => {
   const { origin, destination } = req.query;
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.ORS_API_KEY;
+
+  if (!origin || !destination) {
+    return res.status(400).json({ error: 'Faltan origin o destination' });
+  }
 
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${apiKey}`
-    );
+    const [originLng, originLat] = origin.split(',').map(Number);
+    const [destLng, destLat] = destination.split(',').map(Number);
+
+    if ([originLng, originLat, destLng, destLat].some(Number.isNaN)) {
+      return res.status(400).json({ error: 'Coordenadas inválidas' });
+    }
+
+    const url =
+      `https://api.openrouteservice.org/v2/directions/foot-walking` +
+      `?api_key=${apiKey}` +
+      `&start=${originLng},${originLat}` +
+      `&end=${destLng},${destLat}`;
+
+    const response = await fetch(url);
     const data = await response.json();
-    res.json(data);
+
+    if (!response.ok || !data.features || data.features.length === 0) {
+      console.error('❌ Error de ORS Directions API:', data.error || data);
+      return res.status(400).json({
+        error: 'Error de ORS',
+        details: data.error?.message || 'Sin detalles',
+      });
+    }
+
+    const feature = data.features[0];
+    const summary = feature.properties.summary;
+
+    const polylinePoints = feature.geometry.coordinates.map(([lng, lat]) => ({
+      latitude: lat,
+      longitude: lng,
+    }));
+
+    const result = {
+      polylinePoints,
+      distanceText: formatDistance(summary.distance),
+      durationText: formatDuration(summary.duration),
+    };
+
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Error al consultar Google Directions' });
+    console.error('Error al consultar ORS Directions:', error);
+    res.status(500).json({ error: 'Error al consultar ORS Directions' });
   }
 });
 
