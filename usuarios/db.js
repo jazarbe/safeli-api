@@ -173,36 +173,51 @@ router.get('/auth/perfil', async (req, res) => {
     }
 });
 
-router.put('/auth/perfil', verificarToken, async (req, res) => {
+router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, res) => {
     try {
+        const userId = req.user.id;
         const {
-            nombre,
-            apellido,
+            nombre, firstName,
+            apellido, lastName,
             email,
             nroTelefono,
             username,
-            foto,
-            fechaNacimiento,
+            fechaNacimiento, birthDate,
             contraseña,
+            foto
         } = req.body;
 
-        const updatePayload = { id: req.user.id };
-
-        if (nombre !== undefined) updatePayload.nombre = nombre;
-        if (apellido !== undefined) updatePayload.apellido = apellido;
-        if (email !== undefined) updatePayload.email = email;
-        if (username !== undefined) updatePayload.username = username;
-        if (fechaNacimiento !== undefined) updatePayload.fechaNacimiento = fechaNacimiento;
-        if (foto !== undefined) updatePayload.foto = foto;
-        if (nroTelefono !== undefined) updatePayload.nroTelefono = Number(nroTelefono) || null;
-            
-        const rawPassword = contraseña;
-        if (rawPassword) {
-            updatePayload.contraseña = await bcrypt.hash(rawPassword, 10);
+        let fotoUrl = undefined;
+        if (req.file) {
+            fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        } else if (foto) {
+            fotoUrl = foto;
         }
 
-        const { data: updatedUser, error } = await dbRepo.updateUser(updatePayload);
+        const updatePayload = {
+            firstName: firstName || nombre,
+            lastName: lastName || apellido,
+            email,
+            username,
+            birthDate: birthDate || fechaNacimiento,
+            nroTelefono: nroTelefono ? Number(nroTelefono) : null,
+        };
+
+        if (fotoUrl !== undefined) {
+            updatePayload.foto = fotoUrl;
+        }
+
+        if (contraseña) {
+            updatePayload.contraseña = await bcrypt.hash(contraseña, 10);
+        }
+
+        const { data: updatedUser, error } = await dbRepo.updateUser(userId, updatePayload);
+
         if (error) {
+            console.error('Error al actualizar usuario:', error);
+            if (error.code === '23505') {
+                return res.status(409).json({ message: 'El usuario o email ya está en uso.' });
+            }
             return res.status(500).json({ message: 'Error al actualizar usuario.' });
         }
 
@@ -213,10 +228,19 @@ router.put('/auth/perfil', verificarToken, async (req, res) => {
     }
 });
 
-router.patch('/auth/perfil', verificarToken, async (req, res) => {
+router.use('/uploads', express.static(uploadsDir));
+
+// Endpoint corregido con multer (upload.single('foto'))
+router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, res) => {
     try {
         const userId = req.user.id; 
         const { firstName, lastName, username, email, birthDate, nroTelefono } = req.body;
+
+        // Construir URL de la foto si subió una
+        let fotoUrl = req.body.foto;
+        if (req.file) {
+            fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        }
 
         const { data: updatedUser, error } = await dbRepo.updateUser(userId, {
             firstName,
@@ -224,7 +248,8 @@ router.patch('/auth/perfil', verificarToken, async (req, res) => {
             username,
             email,
             birthDate,
-            nroTelefono
+            nroTelefono,
+            foto: fotoUrl
         });
 
         if (error) {
@@ -235,8 +260,19 @@ router.patch('/auth/perfil', verificarToken, async (req, res) => {
             return res.status(500).json({ message: 'Error interno al actualizar perfil.' });
         }
 
-        // Formateamos la respuesta adaptando los nombres a lo que espera el Frontend
-        return res.json(updatedUser);
+        // Devolvemos el usuario mapeado con la nueva foto
+        const formattedUser = {
+            id: updatedUser.id || userId,
+            firstName: updatedUser.firstName || updatedUser.nombre || firstName || '',
+            lastName: updatedUser.lastName || updatedUser.apellido || lastName || '',
+            username: updatedUser.username || username || '',
+            email: updatedUser.email || email || '',
+            birthDate: updatedUser.birthDate || updatedUser.fecha_nacimiento || birthDate || '',
+            nroTelefono: updatedUser.nroTelefono || updatedUser.nro_telefono || nroTelefono || '',
+            foto: updatedUser.foto || fotoUrl || null
+        };
+
+        return res.json(formattedUser);
 
     } catch (err) {
         console.error('Error en PATCH /auth/perfil:', err);
