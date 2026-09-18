@@ -3,12 +3,13 @@ require('dotenv').config();
 
 const cors = require('cors');
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 
 const usersRouter = require('./usuarios/db.js');
 const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 const { verificarToken } = require('./middlewares/auth.js');
-const { formatDuration, formatDistance } = require('./helpers/utils.js');
+const { formatDuration, formatDistance, parseCoordinatePair } = require('./helpers/utils.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,29 +65,46 @@ app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
   }
 });
 
-app.get('/api/directions', async (req, res) => {
-  const { origin, destination } = req.query;
+const { calcularEstrellasRuta } = require('./helpers/calculoEstrellas');
+const zonasPeligrosas = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, './zonas_peligrosas.geojson'), 'utf8')
+);
+
+app.post('/api/directions', async (req, res) => {
+  const { origin, destination } = req.body;
   const apiKey = process.env.ORS_API_KEY;
 
   if (!origin || !destination) {
     return res.status(400).json({ error: 'Faltan origin o destination' });
   }
 
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Falta la API key de OpenRouteService (ORS_API_KEY).' });
+  }
+
   try {
-    const [originLng, originLat] = origin.split(',').map(Number);
-    const [destLng, destLat] = destination.split(',').map(Number);
+    const [originLng, originLat] = parseCoordinatePair(origin, 'origin');
+    const [destLng, destLat] = parseCoordinatePair(destination, 'destination');
 
     if ([originLng, originLat, destLng, destLat].some(Number.isNaN)) {
       return res.status(400).json({ error: 'Coordenadas inválidas' });
     }
 
-    const url =
-      `https://api.openrouteservice.org/v2/directions/foot-walking` +
-      `?api_key=${apiKey}` +
-      `&start=${originLng},${originLat}` +
-      `&end=${destLng},${destLat}`;
+    // Petición a ORS pidiendo GeoJSON para poder analizar la geometría de la ruta rápida
+    const url = 'https://api.openrouteservice.org/v2/directions/foot-walking/geojson';
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/geo+json, application/json'
+      },
+      body: JSON.stringify({
+        coordinates: [[originLng, originLat], [destLng, destLat]]
+      })
+    });
+
     const data = await response.json();
 
     if (!response.ok || !data.features || data.features.length === 0) {
@@ -100,6 +118,10 @@ app.get('/api/directions', async (req, res) => {
     const feature = data.features[0];
     const summary = feature.properties.summary;
 
+    // 🌟 EVALUACIÓN DE SEGURIDAD PARA LA RUTA RÁPIDA:
+    // Analizamos el GeoJSON de la ruta rápida contra las zonas de riesgo
+    const evaluacionSeguridad = calcularEstrellasRuta(data, zonasPeligrosas);
+
     const polylinePoints = feature.geometry.coordinates.map(([lng, lat]) => ({
       latitude: lat,
       longitude: lng,
@@ -109,12 +131,14 @@ app.get('/api/directions', async (req, res) => {
       polylinePoints,
       distanceText: formatDistance(summary.distance),
       durationText: formatDuration(summary.duration),
+      // Retornamos las estrellas y métricas al frontend
+      safetyAssessment: evaluacionSeguridad 
     };
 
     res.json(result);
   } catch (error) {
     console.error('Error al consultar ORS Directions:', error);
-    res.status(500).json({ error: 'Error al consultar ORS Directions' });
+    res.status(500).json({ error: 'Error al consultar ORS Directions', details: error.message });
   }
 });
 

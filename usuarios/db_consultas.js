@@ -43,17 +43,6 @@ class DBRepository {
     return { data, error };
   }
 
-  async updateUser(userPayload) {
-    const { id, ...updates } = userPayload;
-    const { data, error } = await supabase
-      .from('Usuarios')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    return { data, error };
-  }
 
   async saveRefreshToken(user_id, token, expiresAt) {
     return await supabase.from('Tokens').insert([
@@ -77,12 +66,21 @@ class DBRepository {
   async updateUser(userId, updatePayload) {
     const dbData = {};
 
-    if (updatePayload.firstName !== undefined) dbData.nombre = updatePayload.firstName;
-    if (updatePayload.lastName !== undefined) dbData.apellido = updatePayload.lastName;
+    if (updatePayload.firstName !== undefined || updatePayload.nombre !== undefined) {
+      dbData.nombre = updatePayload.firstName ?? updatePayload.nombre;
+    }
+    if (updatePayload.lastName !== undefined || updatePayload.apellido !== undefined) {
+      dbData.apellido = updatePayload.lastName ?? updatePayload.apellido;
+    }
     if (updatePayload.username !== undefined) dbData.username = updatePayload.username;
     if (updatePayload.email !== undefined) dbData.email = updatePayload.email;
-    if (updatePayload.birthDate !== undefined) dbData.fechaNacimiento = updatePayload.birthDate;
+    if (updatePayload.birthDate !== undefined || updatePayload.fechaNacimiento !== undefined) {
+      dbData.fechaNacimiento = updatePayload.birthDate ?? updatePayload.fechaNacimiento;
+    }
     if (updatePayload.nroTelefono !== undefined) dbData.nroTelefono = updatePayload.nroTelefono;
+    
+    if (updatePayload.foto !== undefined) dbData.foto = updatePayload.foto;
+    if (updatePayload.contraseña !== undefined) dbData.contraseña = updatePayload.contraseña;
 
     const { data, error } = await supabase
       .from('Usuarios')
@@ -93,7 +91,6 @@ class DBRepository {
 
     return { data, error };
   }
-
   async updatePassword(userId, newPasswordHashed) {
     const { data, error } = await supabase
       .from('Usuarios')

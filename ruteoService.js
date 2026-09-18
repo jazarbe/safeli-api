@@ -1,29 +1,22 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Escudo para la red institucional
 const fs = require('fs');
 const path = require('path');
+const { calcularEstrellasRuta } = require('./helpers/calculoEstrellas'); // Importamos la función
+
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-// Cargamos las zonas de peligro una sola vez al iniciar el servidor (eficiencia pura)
 const zonasPeligrosas = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, './zonas_peligrosas.geojson'), 'utf8')
 );
 
-/**
- * Calcula una ruta peatonal segura esquivando las zonas de delitos de Supabase
- * @param {Array} origen - Coordenadas de inicio [longitud, latitud] -> Ej: [-58.4539, -34.5851]
- * @param {Array} destino - Coordenadas de fin [longitud, latitud] -> Ej: [-58.4600, -34.5900]
- * @returns {Object} GeoJSON con la ruta calculada
- */
 async function obtenerRutaPeatonalSegura(origen, destino) {
     const ORS_API_KEY = process.env.ORS_API_KEY;
     const url = 'https://api.openrouteservice.org/v2/directions/foot-walking/geojson';
 
     const body = {
-        coordinates: [origen, destino], // Parámetros dinámicos
+        coordinates: [origen, destino],
         options: {}
     };
 
-    // Estructuramos el MultiPolygon para OpenRouteService
     if (zonasPeligrosas.features && zonasPeligrosas.features.length > 0) {
         body.options.avoid_polygons = {
             type: "MultiPolygon",
@@ -47,7 +40,16 @@ async function obtenerRutaPeatonalSegura(origen, destino) {
         }
 
         const resultadoRuta = await respuesta.json();
-        return resultadoRuta; // Devolvemos el GeoJSON limpio para el mapa
+
+        // 🌟 Calculamos el score de seguridad antes de retornar
+        const evaluacionSeguridad = calcularEstrellasRuta(resultadoRuta, zonasPeligrosas);
+
+        // Adjuntamos la evaluación en las propiedades del GeoJSON
+        if (resultadoRuta.features && resultadoRuta.features.length > 0) {
+            resultadoRuta.features[0].properties.safety_assessment = evaluacionSeguridad;
+        }
+
+        return resultadoRuta;
 
     } catch (error) {
         console.error('❌ Error en el servicio de ruteo:', error.message);
@@ -55,5 +57,4 @@ async function obtenerRutaPeatonalSegura(origen, destino) {
     }
 }
 
-// Exportamos la función para que la pueda usar tu servidor Express u otros scripts
 module.exports = { obtenerRutaPeatonalSegura };
