@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
-const postgres = require('postgres');
 const DBRepository = require('./db_consultas.js');
 const { verificarToken } = require('../middlewares/auth.js');
 const jwt = require('jsonwebtoken');
@@ -250,6 +249,33 @@ router.post('/auth/logout', verificarToken, async (req, res) => {
         await dbRepo.deleteToken(token);
     }
     return res.status(200).json({ message: 'Sesión cerrada' });
+});
+
+router.patch('/auth/change-password', verificarToken, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        const { data: user, error } = await dbRepo.getUserByLoginIdentifier(req.user.username);
+        if (error) {
+            return res.status(500).json({ message: 'Error al obtener usuario.' });
+        }
+
+        const isMatch = await bcrypt.compare(currentPassword, user.contraseña);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Contraseña actual incorrecta.' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        const { error: updateError } = await dbRepo.updatePassword(req.user.id, hashedPassword);
+        if (updateError) {
+            return res.status(500).json({ message: 'Error al actualizar contraseña.' });
+        }
+        
+        return res.json({ message: 'Contraseña actualizada correctamente.' });
+    } catch (err) {
+        console.error('Error en PATCH /auth/change-password:', err);
+        return res.status(500).json({ message: 'Error en el servidor' });
+    }
 });
 
 module.exports = router;
