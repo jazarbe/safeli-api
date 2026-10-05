@@ -95,6 +95,7 @@ router.post('/auth/login', async (req, res) => {
                 email: user.email,
                 username: user.username,
                 nroTelefono: user.nroTelefono,
+                contactoEmergencia: user.contactoEmergencia,
                 foto: user.foto,
                 fechaNacimiento: user.fechaNacimiento,
             },
@@ -107,7 +108,7 @@ router.post('/auth/login', async (req, res) => {
 
 router.post('/auth/register', upload.single('foto'), async (req, res) => {
     try {
-        const { nombre, apellido, email, username, fechaNacimiento, contraseña, password, nroTelefono } = req.body;
+        const { nombre, apellido, email, username, fechaNacimiento, contraseña, password, nroTelefono, contactoEmergencia } = req.body;
         const rawPassword = contraseña ?? password ?? '';
 
         let fotoUrl = '-1';
@@ -125,6 +126,7 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
             fechaNacimiento,
             contraseña: hashed,
             nroTelefono: Number(nroTelefono) || null,
+            contactoEmergencia: contactoEmergencia || null,
             foto: fotoUrl,
         });
 
@@ -180,6 +182,7 @@ router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, re
             apellido, lastName,
             email,
             nroTelefono,
+            contactoEmergencia,
             username,
             fechaNacimiento, birthDate,
             contraseña,
@@ -200,6 +203,7 @@ router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, re
             username,
             birthDate: birthDate || fechaNacimiento,
             nroTelefono: nroTelefono ? Number(nroTelefono) : null,
+            contactoEmergencia: contactoEmergencia ?? null,
         };
 
         if (fotoUrl !== undefined) {
@@ -233,7 +237,7 @@ router.use('/uploads', express.static(uploadsDir));
 router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, res) => {
     try {
         const userId = req.user.id; 
-        const { firstName, lastName, username, email, birthDate, nroTelefono } = req.body;
+        const { firstName, lastName, username, email, birthDate, nroTelefono, contactoEmergencia } = req.body;
 
         // Construir URL de la foto si subió una
         let fotoUrl = req.body.foto;
@@ -248,6 +252,7 @@ router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, 
             email,
             birthDate,
             nroTelefono,
+            contactoEmergencia,
             foto: fotoUrl
         });
 
@@ -268,6 +273,7 @@ router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, 
             email: updatedUser.email || email || '',
             birthDate: updatedUser.birthDate || updatedUser.fecha_nacimiento || birthDate || '',
             nroTelefono: updatedUser.nroTelefono || updatedUser.nro_telefono || nroTelefono || '',
+            contactoEmergencia: updatedUser.contactoEmergencia || contactoEmergencia || '',
             foto: updatedUser.foto || fotoUrl || null
         };
 

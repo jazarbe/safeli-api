@@ -33,7 +33,7 @@ class DBRepository {
     return { data, error };
   }
 
-  async createUser(userPayload) {
+  async  createUser(userPayload) {
     const { data, error } = await supabase
       .from('Usuarios')
       .insert([userPayload])
@@ -78,6 +78,7 @@ class DBRepository {
       dbData.fechaNacimiento = updatePayload.birthDate ?? updatePayload.fechaNacimiento;
     }
     if (updatePayload.nroTelefono !== undefined) dbData.nroTelefono = updatePayload.nroTelefono;
+    if (updatePayload.contactoEmergencia !== undefined) dbData.contactoEmergencia = updatePayload.contactoEmergencia;
     
     if (updatePayload.foto !== undefined) dbData.foto = updatePayload.foto;
     if (updatePayload.contraseña !== undefined) dbData.contraseña = updatePayload.contraseña;
