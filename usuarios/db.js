@@ -126,7 +126,7 @@ router.post('/auth/register', upload.single('foto'), async (req, res) => {
             fechaNacimiento,
             contraseña: hashed,
             nroTelefono: Number(nroTelefono) || null,
-            contactoEmergencia: contactoEmergencia || null,
+            contactoEmergencia: contactoEmergencia || -1,
             foto: fotoUrl,
         });
 
