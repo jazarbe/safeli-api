@@ -4,9 +4,14 @@ const { calcularEstrellasRuta } = require('./helpers/calculoEstrellas'); // Impo
 
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const zonasPeligrosas = JSON.parse(
+let zonasPeligrosas = { type: 'FeatureCollection', features: [] };
+try {
+  zonasPeligrosas = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, './zonas_peligrosas.geojson'), 'utf8')
-);
+  );
+} catch (e) {
+  console.warn('No se pudo cargar zonas_peligrosas.geojson:', e.message);
+}
 
 async function obtenerRutaPeatonalSegura(origen, destino) {
     const ORS_API_KEY = process.env.ORS_API_KEY;

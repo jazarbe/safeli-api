@@ -171,7 +171,7 @@ router.get('/auth/perfil', async (req, res) => {
         return res.json({ user });
     } catch (err) {
         console.error('/auth/perfil [GET] error', err);
-        return res.status(500).json({ message: 'Error al obtener perfil.' });
+        return res.status(401).json({ message: 'Error al obtener perfil.' });
     }
 });
 

@@ -1,4 +1,3 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 require('dotenv').config();
 
 const cors = require('cors');
@@ -19,10 +18,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token']
 }));
-app.options('*', cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
-app.use('', usersRouter);
+app.use('/', usersRouter);
 
 app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
   try {
@@ -153,7 +151,9 @@ app.post('/api/directions', async (req, res) => {
   }
 });
 
+if (require.main === module) {
 app.listen(PORT, () => {
   console.log(`🗺️ Servicio de Mapa Seguro activado en: http://localhost:${PORT}/api/calcular-camino-seguro`);
   console.log(`🔐 Servicio de Autenticación activado en: http://localhost:${PORT}/`);
-});
+});}
+module.exports = app;
