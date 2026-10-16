@@ -23,6 +23,9 @@ const connectionString = rawDbUrl
 const dbRepo = new DBRepository();
 const router = express.Router();
 
+const { data: user, error } = await dbRepo.getUserByLoginIdentifier(username);
+console.log('LOGIN lookup:', { username, found: !!user, error });
+
 router.use(express.json());
 
 const uploadsDir = path.join(os.tmpdir(), 'uploads');
