@@ -4,8 +4,7 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const { createClient } = require('@supabase/supabase-js');
 const DBRepository = require('./db_consultas.js');
 const { verificarToken } = require('../middlewares/auth.js');
 const jwt = require('jsonwebtoken');
@@ -25,24 +24,56 @@ const router = express.Router();
 
 router.use(express.json());
 
-const uploadsDir = path.join(os.tmpdir(), 'uploads');
-try {
-  if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-} catch (err) {
-  console.warn('⚠️ No se pudo crear el directorio temporal de subidas:', err.message);
-}
+// ─── SUPABASE STORAGE ───
+const FOTOS_BUCKET = process.env.SUPABASE_FOTOS_BUCKET || 'fotos-perfil';
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY // solo backend, nunca en el front
+);
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname) || '.jpg';
-        cb(null, `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
-    }
+// En Vercel no hay disco persistente: el archivo queda en memoria (máx 3 MB) y se sube a Supabase
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 3 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            const err = new Error('Tipo de archivo no permitido');
+            err.code = 'INVALID_FILE_TYPE';
+            return cb(err);
+        }
+        cb(null, true);
+    },
 });
-const upload = multer({ storage });
-router.use('/uploads', express.static(uploadsDir));
+
+const subirFoto = (req, res, next) => {
+    upload.single('foto')(req, res, (err) => {
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(413).json({ message: 'La foto es demasiado pesada. El máximo es 3 MB.' });
+            }
+            if (err.code === 'INVALID_FILE_TYPE') {
+                return res.status(400).json({ message: 'El archivo debe ser una imagen.' });
+            }
+            return res.status(400).json({ message: 'Error al subir la foto.' });
+        }
+        next();
+    });
+};
+
+// Sube el archivo a Supabase Storage y devuelve la URL pública
+async function subirFotoAStorage(file, carpeta) {
+    const ext = path.extname(file.originalname) || '.jpg';
+    const filePath = `${carpeta}/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+
+    const { error } = await supabase.storage
+        .from(FOTOS_BUCKET)
+        .upload(filePath, file.buffer, { contentType: file.mimetype, upsert: false });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from(FOTOS_BUCKET).getPublicUrl(filePath);
+    return data.publicUrl;
+}
 
 // ─── HELPER PARA GENERAR TOKENS ───
 function generarTokens(user) {
@@ -109,14 +140,14 @@ router.post('/auth/login', async (req, res) => {
     }
 });
 
-router.post('/auth/register', upload.single('foto'), async (req, res) => {
+router.post('/auth/register', subirFoto, async (req, res) => {
     try {
         const { nombre, apellido, email, username, fechaNacimiento, contraseña, password, nroTelefono, contactoEmergencia } = req.body;
         const rawPassword = contraseña ?? password ?? '';
 
         let fotoUrl = '-1';
         if (req.file) {
-            fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+            fotoUrl = await subirFotoAStorage(req.file, 'registro');
         }
 
         const hashed = await bcrypt.hash(rawPassword, 10);
@@ -177,7 +208,7 @@ router.get('/auth/perfil', async (req, res) => {
     }
 });
 
-router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, res) => {
+router.put('/auth/perfil', verificarToken, subirFoto, async (req, res) => {
     try {
         const userId = req.user.id;
         const {
@@ -194,7 +225,7 @@ router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, re
 
         let fotoUrl = undefined;
         if (req.file) {
-            fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+            fotoUrl = await subirFotoAStorage(req.file, `usuarios/${userId}`);
         } else if (foto) {
             fotoUrl = foto;
         }
@@ -234,10 +265,7 @@ router.put('/auth/perfil', verificarToken, upload.single('foto'), async (req, re
     }
 });
 
-router.use('/uploads', express.static(uploadsDir));
-
-// Endpoint corregido con multer (upload.single('foto'))
-router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, res) => {
+router.patch('/auth/perfil', verificarToken, subirFoto, async (req, res) => {
     try {
         const userId = req.user.id; 
         const { firstName, lastName, username, email, birthDate, nroTelefono, contactoEmergencia } = req.body;
@@ -245,7 +273,7 @@ router.patch('/auth/perfil', verificarToken, upload.single('foto'), async (req, 
         // Construir URL de la foto si subió una
         let fotoUrl = req.body.foto;
         if (req.file) {
-            fotoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+            fotoUrl = await subirFotoAStorage(req.file, `usuarios/${userId}`);
         }
 
         const { data: updatedUser, error } = await dbRepo.updateUser(userId, {
