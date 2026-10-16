@@ -23,9 +23,6 @@ const connectionString = rawDbUrl
 const dbRepo = new DBRepository();
 const router = express.Router();
 
-const { data: user, error } = await dbRepo.getUserByLoginIdentifier(username);
-console.log('LOGIN lookup:', { username, found: !!user, error });
-
 router.use(express.json());
 
 const uploadsDir = path.join(os.tmpdir(), 'uploads');
@@ -71,12 +68,14 @@ router.post('/auth/login', async (req, res) => {
         }
 
         const { data: user, error } = await dbRepo.getUserByLoginIdentifier(username);
+        console.log('LOGIN lookup:', { username, found: !!user, error });
 
         if (error || !user) {
             return res.status(401).json({ message: 'Usuario o contraseña incorrectos.' });
         }
 
         const passwordMatches = await bcrypt.compare(rawPassword, user.contraseña);
+        console.log('LOGIN password:', { matches: passwordMatches, hashPrefix: String(user.contraseña).slice(0, 4) });
         if (!passwordMatches) {
             return res.status(401).json({ message: 'Usuario o contraseña incorrectos.' });
         }
