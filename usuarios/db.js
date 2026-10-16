@@ -20,12 +20,6 @@ const connectionString = process.env.DATABASE_URL
 const dbRepo = new DBRepository();
 const router = express.Router();
 
-// ─── MIDDLEWARES Y ARCHIVOS ESTÁTICOS ───
-router.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
 router.use(express.json());
 
 const uploadsDir = path.join(__dirname, 'uploads');
