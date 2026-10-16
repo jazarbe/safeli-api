@@ -5,15 +5,18 @@ const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const DBRepository = require('./db_consultas.js');
 const { verificarToken } = require('../middlewares/auth.js');
 const jwt = require('jsonwebtoken');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const SECRET_KEY = process.env.JWT_SECRET || 'ClaveSecretaSafeli2026$';
+const SECRET_KEY = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'ClaveSecretaSafeli2026$';
 
-const connectionString = process.env.DATABASE_URL
+// Prevenir crash si DATABASE_URL no está definida en Vercel
+const rawDbUrl = process.env.DATABASE_URL || '';
+const connectionString = rawDbUrl
     .replace('[DATABASE_PASSWORD]', process.env.DATABASE_PASSWORD || '')
     .replace('[DB_PORT]', process.env.DB_PORT || '5432');
 
@@ -22,9 +25,13 @@ const router = express.Router();
 
 router.use(express.json());
 
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = path.join(os.tmpdir(), 'uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('⚠️ No se pudo crear el directorio temporal de subidas:', err.message);
 }
 
 const storage = multer.diskStorage({

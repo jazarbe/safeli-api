@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-const SECRET_KEY = process.env.JWT_SECRET || 'ClaveSecretaSafeli2026$';
+const SECRET_KEY = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET ||'ClaveSecretaSafeli2026$';
 
 function verificarToken(req, res, next) {
   const authHeader = req.headers['authorization'];

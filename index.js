@@ -71,9 +71,15 @@ app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
 });
 
 const { calcularEstrellasRuta } = require('./helpers/calculoEstrellas');
-const zonasPeligrosas = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, './zonas_peligrosas.geojson'), 'utf8')
-);
+let zonasPeligrosas = null;
+try {
+  const geojsonPath = path.resolve(__dirname, './zonas_peligrosas.geojson');
+  if (fs.existsSync(geojsonPath)) {
+    zonasPeligrosas = JSON.parse(fs.readFileSync(geojsonPath, 'utf8'));
+  }
+} catch (e) {
+  console.warn('⚠️ No se pudo cargar zonas_peligrosas.geojson:', e.message);
+}
 
 app.post('/api/directions', async (req, res) => {
   const { origin, destination } = req.body;
