@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const usersRouter = require('./usuarios/db.js');
+const orbitsRouter = require('./orbits/orbits.js');
 const { obtenerRutaPeatonalSegura } = require('./ruteoService.js');
 const { verificarToken } = require('./middlewares/auth.js');
 const { formatDuration, formatDistance, parseCoordinatePair } = require('./helpers/utils.js');
@@ -21,6 +22,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
 app.use('/', usersRouter);
+app.use('/', orbitsRouter);
 
 app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
   try {
