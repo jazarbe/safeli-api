@@ -4,6 +4,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const { verificarToken } = require('../middlewares/auth.js');
+const { subirFoto, subirFotoAStorage } = require('../helpers/fotos.js');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -46,8 +47,9 @@ async function obtenerMiembros(orbitId, userId) {
   });
 }
 
-// Crear Orbit: el usuario logueado queda como administrador y primer miembro
-router.post('/orbits', verificarToken, async (req, res) => {
+// Crear Orbit: el usuario logueado queda como administrador y primer miembro.
+// Acepta JSON o multipart/form-data (con foto opcional en el campo "foto").
+router.post('/orbits', verificarToken, subirFoto, async (req, res) => {
   try {
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ message: 'El nombre del Orbit es obligatorio.' });
@@ -55,13 +57,12 @@ router.post('/orbits', verificarToken, async (req, res) => {
 
     const userId = req.user.id;
 
-    // Reintenta si el código generado ya existía (colisión improbable)
     let orbit = null;
     for (let i = 0; i < 3 && !orbit; i++) {
       const { data, error } = await supabase
         .from('Orbits')
         .insert([{ name, invite_code: generarCodigo(), owner_id: userId }])
-        .select('id, name, invite_code')
+        .select('id, name, invite_code, photo')
         .single();
 
       if (!error) orbit = data;
@@ -74,13 +75,27 @@ router.post('/orbits', verificarToken, async (req, res) => {
       .insert([{ orbit_id: orbit.id, user_id: userId, role: 'admin' }]);
 
     if (memberErr) {
-      await supabase.from('Orbits').delete().eq('id', orbit.id); // no dejar orbits huérfanos
+      await supabase.from('Orbits').delete().eq('id', orbit.id);
       throw memberErr;
+    }
+
+    // Foto opcional: si falla la subida, el Orbit igual queda creado (se puede cambiar después)
+    let photo = orbit.photo ?? null;
+    if (req.file) {
+      try {
+        photo = await subirFotoAStorage(req.file, `orbits/${orbit.id}`);
+        const { error: photoErr } = await supabase.from('Orbits').update({ photo }).eq('id', orbit.id);
+        if (photoErr) throw photoErr;
+      } catch (photoErr) {
+        console.error('POST /orbits: no se pudo guardar la foto', photoErr);
+        photo = null;
+      }
     }
 
     return res.status(201).json({
       id: orbit.id,
       name: orbit.name,
+      photo,
       inviteCode: orbit.invite_code,
       members: await obtenerMiembros(orbit.id, userId),
     });
@@ -90,12 +105,12 @@ router.post('/orbits', verificarToken, async (req, res) => {
   }
 });
 
-// Orbits del usuario logueado (debe ir ANTES de /orbits/:id)
+// Orbits del usuario logueado (ANTES de /orbits/:id)
 router.get('/orbits/mine', verificarToken, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('OrbitMiembros')
-      .select('joined_at, Orbits(id, name, OrbitMiembros(count))')
+      .select('joined_at, Orbits(id, name, photo, OrbitMiembros(count))')
       .eq('user_id', req.user.id)
       .order('joined_at', { ascending: false });
     if (error) throw error;
@@ -105,6 +120,7 @@ router.get('/orbits/mine', verificarToken, async (req, res) => {
       .map((row) => ({
         id: row.Orbits.id,
         name: row.Orbits.name,
+        photo: row.Orbits.photo ?? null,
         memberCount: row.Orbits.OrbitMiembros?.[0]?.count ?? undefined,
       }));
 
@@ -112,6 +128,38 @@ router.get('/orbits/mine', verificarToken, async (req, res) => {
   } catch (err) {
     console.error('GET /orbits/mine error', err);
     return res.status(500).json({ message: 'Error al obtener tus Orbits.' });
+  }
+});
+
+// Cambiar la foto del Orbit: cualquier miembro puede hacerlo
+router.patch('/orbits/:id/foto', verificarToken, subirFoto, async (req, res) => {
+  try {
+    const orbitId = req.params.id;
+    if (!req.file) return res.status(400).json({ message: 'Falta la foto.' });
+
+    const { data: orbit, error } = await supabase
+      .from('Orbits')
+      .select('id')
+      .eq('id', orbitId)
+      .maybeSingle();
+
+    if (error?.code === '22P02' || (!error && !orbit)) {
+      return res.status(404).json({ message: 'El Orbit no existe.' });
+    }
+    if (error) throw error;
+
+    if (!(await esMiembro(orbit.id, req.user.id))) {
+      return res.status(403).json({ message: 'No sos miembro de este Orbit.' });
+    }
+
+    const photo = await subirFotoAStorage(req.file, `orbits/${orbit.id}`);
+    const { error: updErr } = await supabase.from('Orbits').update({ photo }).eq('id', orbit.id);
+    if (updErr) throw updErr;
+
+    return res.json({ id: orbit.id, photo });
+  } catch (err) {
+    console.error('PATCH /orbits/:id/foto error', err);
+    return res.status(500).json({ message: 'Error al actualizar la foto del Orbit.' });
   }
 });
 
@@ -123,11 +171,10 @@ router.get('/orbits/:id', verificarToken, async (req, res) => {
 
     const { data: orbit, error } = await supabase
       .from('Orbits')
-      .select('id, name, invite_code')
+      .select('id, name, invite_code, photo')
       .eq('id', orbitId)
       .maybeSingle();
 
-    // Un id con formato inválido hace fallar la consulta: lo tratamos como "no existe"
     if (error?.code === '22P02' || (!error && !orbit)) {
       return res.status(404).json({ message: 'El Orbit no existe.' });
     }
@@ -140,6 +187,7 @@ router.get('/orbits/:id', verificarToken, async (req, res) => {
     return res.json({
       id: orbit.id,
       name: orbit.name,
+      photo: orbit.photo ?? null,
       inviteCode: orbit.invite_code,
       members: await obtenerMiembros(orbit.id, userId),
     });
