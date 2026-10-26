@@ -23,6 +23,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
 app.use('/', usersRouter);
 app.use('/', orbitsRouter);
+app.use('/', require('./orbits/ubicacion.js'));
 
 app.post('/api/calcular-camino-seguro', verificarToken, async (req, res) => {
   try {
