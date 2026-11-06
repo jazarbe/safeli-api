@@ -2,7 +2,7 @@ Safeli calcula rutas óptimas evitando zonas de alto riesgo en tiempo real media
 
 Pasos para ejecutar el proyecto
 1. Clonar el repositorio de Backend e instalar dependencias
-git clone 
+git clone https://github.com/jazarbe/safeli-api.git
 cd safeli
 npm install
 
